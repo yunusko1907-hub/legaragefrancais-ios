@@ -8,7 +8,6 @@ on:
 jobs:
   build-and-upload:
     runs-on: macos-latest
-
     timeout-minutes: 60
 
     steps:
@@ -85,14 +84,6 @@ jobs:
           }
           EOF
 
-      - name: Création du trousseau de signature sécurisé
-        run: |
-          security create-keychain -p "buildpass" build.keychain
-          security list-keychains -s build.keychain $(security list-keychains | tr -d '"')
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "buildpass" build.keychain
-          security set-keychain-settings -lut 3600 build.keychain
-        
       - name: Compilation, Signature et Envoi à App Store Connect
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -107,6 +98,8 @@ jobs:
 
           platform :ios do
             lane :release do
+              setup_ci
+
               api_key = app_store_connect_api_key(
                 key_id: ENV["APP_STORE_CONNECT_KEY_ID"],
                 issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
@@ -116,10 +109,8 @@ jobs:
 
               cert(
                 api_key: api_key,
-                team_id: ENV["APPLE_TEAM_ID"],
-                keychain_password: "buildpass"
+                team_id: ENV["APPLE_TEAM_ID"]
               )
-                sh("security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k \"buildpass\" ~/Library/Keychains/build.keychain-db 2>/dev/null || security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k \"buildpass\" ~/Library/Keychains/build.keychain")
 
               sigh(
                 api_key: api_key,
@@ -138,10 +129,9 @@ jobs:
               )
 
               build_app(
-                          project: "ios/App/App.xcodeproj",
-                          configuration: "Release",
-
+                project: "ios/App/App.xcodeproj",
                 scheme: "App",
+                configuration: "Release",
                 codesigning_identity: "Apple Distribution",
                 export_method: "app-store",
                 export_options: {
