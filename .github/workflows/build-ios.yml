@@ -132,6 +132,7 @@ jobs:
                 path: "ios/App/App.xcodeproj",
                 team_id: ENV["APPLE_TEAM_ID"],
                 bundle_identifier: "fr.legaragefrancais.app",
+                code_sign_identity: "Apple Distribution",
                 profile_name: lane_context[SharedValues::SIGH_NAME]
               )
 
@@ -139,6 +140,7 @@ jobs:
                           project: "ios/App/App.xcodeproj",
 
                 scheme: "App",
+                codesigning_identity: "Apple Distribution",
                 export_method: "app-store",
                 export_options: {
                   provisioningProfiles: {
