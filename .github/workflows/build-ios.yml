@@ -92,6 +92,7 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "buildpass" build.keychain
           security set-keychain-settings -lut 3600 build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "buildpass" build.keychain
 
       - name: Compilation, Signature et Envoi à App Store Connect
         env:
@@ -119,6 +120,7 @@ jobs:
                 team_id: ENV["APPLE_TEAM_ID"],
                 keychain_password: "buildpass"
               )
+                sh("security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k \"buildpass\" ~/Library/Keychains/build.keychain-db 2>/dev/null || security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k \"buildpass\" ~/Library/Keychains/build.keychain")
 
               sigh(
                 api_key: api_key,
@@ -138,6 +140,7 @@ jobs:
 
               build_app(
                           project: "ios/App/App.xcodeproj",
+                          configuration: "Release",
 
                 scheme: "App",
                 codesigning_identity: "Apple Distribution",
