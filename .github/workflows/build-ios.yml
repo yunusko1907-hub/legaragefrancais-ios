@@ -117,7 +117,6 @@ jobs:
               cert(
                 api_key: api_key,
                 team_id: ENV["APPLE_TEAM_ID"],
-                keychain_path: "build.keychain",
                 keychain_password: "buildpass"
               )
 
