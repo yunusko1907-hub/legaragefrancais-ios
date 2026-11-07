@@ -136,7 +136,8 @@ jobs:
               )
 
               build_app(
-                workspace: "ios/App/App.xcworkspace",
+                          project: "ios/App/App.xcodeproj",
+
                 scheme: "App",
                 export_method: "app-store",
                 export_options: {
