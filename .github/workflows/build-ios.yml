@@ -112,7 +112,7 @@ jobs:
                 scheme: "App",
                 configuration: "Release",
                 export_method: "app-store",
-                xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}"
+                xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} -allowProvisioningUpdates"
               )
 
 
