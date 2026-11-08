@@ -61,7 +61,6 @@ jobs:
           EOF
 
           npx cap add ios
-          sed -i '' 's/Apple Development/Apple Distribution/g' ios/App/App.xcodeproj/project.pbxproj
 
       - name: Intégrer l'icône officielle de l'application
         run: |
@@ -85,6 +84,11 @@ jobs:
           }
           EOF
 
+      - name: Préparer la clé API privée
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
+
       - name: Compilation, Signature et Envoi à App Store Connect
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -92,39 +96,61 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
         run: |
+          # 1. Compiler l'archive sans exiger de profil de développement
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -archivePath build/App.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+          # 2. Configurer les options d'exportation pour l'App Store
+          cat << EOF > exportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>${{ secrets.APPLE_TEAM_ID }}</string>
+              <key>signingStyle</key>
+              <string>automatic</string>
+          </dict>
+          </plist>
+          EOF
+
+          # 3. Exporter et signer l'application avec la clé API App Store Connect
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build/output \
+            -exportOptionsPlist exportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
+          # 4. Envoyer le fichier .ipa vers App Store Connect / TestFlight via Fastlane
           mkdir -p fastlane
           cat << 'EOF' > fastlane/Fastfile
-
           default_platform(:ios)
-
           platform :ios do
-            lane :release do
-              setup_ci
-
+            lane :upload do
               api_key = app_store_connect_api_key(
                 key_id: ENV["APP_STORE_CONNECT_KEY_ID"],
                 issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
                 key_content: ENV["APP_STORE_CONNECT_PRIVATE_KEY"],
                 is_key_content_base64: false
               )
-
-              key_file = File.expand_path("~/AuthKey.p8")
-              File.write(key_file, ENV["APP_STORE_CONNECT_PRIVATE_KEY"])
-
-              build_app(
-                project: "ios/App/App.xcodeproj",
-                scheme: "App",
-                configuration: "Release",
-                export_method: "app-store",
-                xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{key_file} -authenticationKeyID #{ENV['APP_STORE_CONNECT_KEY_ID']} -authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_ISSUER_ID']} DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_IDENTITY='Apple Distribution'"
-              )
-
               upload_to_testflight(
                 api_key: api_key,
+                ipa: "build/output/App.ipa",
                 skip_waiting_for_build_processing: true
               )
             end
           end
           EOF
 
-          fastlane release
+          fastlane upload
