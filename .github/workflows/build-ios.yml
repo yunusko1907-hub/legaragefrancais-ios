@@ -1,6 +1,136 @@
 name: Build & Livrer iOS App Store
 
+on:name: Build & Livrer iOS App Store
+
 on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-upload:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Configuration de Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configuration de Ruby pour Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Installation de Fastlane
+        run: gem install fastlane --no-document
+
+      - name: Initialisation du socle iOS
+        run: |
+          npm init -y
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/ios@latest
+
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "fr.legaragefrancais.app",
+            "appName": "Le Garage Français",
+            "webDir": "www",
+            "server": {
+              "url": "https://legaragefrancais.fr",
+              "cleartext": false
+            }
+          }
+          EOF
+
+          mkdir -p www
+          cat << 'EOF' > www/index.html
+          <!DOCTYPE html>
+          <html lang="fr">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Le Garage Français</title>
+            <meta http-equiv="refresh" content="0; url=https://legaragefrancais.fr">
+          </head>
+          <body style="background-color: #0f172a; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; color: white; font-family: sans-serif;">
+            <p>Chargement de Le Garage Français...</p>
+          </body>
+          </html>
+          EOF
+
+          npx cap add ios
+          sed -i '' 's/Apple Development/Apple Distribution/g' ios/App/App.xcodeproj/project.pbxproj
+
+      - name: Intégrer l'icône officielle de l'application
+        run: |
+          mkdir -p ios/App/App/Assets.xcassets/AppIcon.appiconset
+          curl -s -o /tmp/icon-raw.png "https://legaragefrancais.fr/icon-512.png"
+          sips -z 1024 1024 /tmp/icon-raw.png --out ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+          cat << 'EOF' > ios/App/App/Assets.xcassets/AppIcon.appiconset/Contents.json
+          {
+            "images" : [
+              {
+                "filename" : "AppIcon-512@2x.png",
+                "idiom" : "universal",
+                "platform" : "ios",
+                "size" : "1024x1024"
+              }
+            ],
+            "info" : {
+              "author" : "xcode",
+              "version" : 1
+            }
+          }
+          EOF
+
+      - name: Compilation, Signature et Envoi à App Store Connect
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          mkdir -p fastlane
+          cat << 'EOF' > fastlane/Fastfile
+
+          default_platform(:ios)
+
+          platform :ios do
+            lane :release do
+              setup_ci
+
+              api_key = app_store_connect_api_key(
+                key_id: ENV["APP_STORE_CONNECT_KEY_ID"],
+                issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+                key_content: ENV["APP_STORE_CONNECT_PRIVATE_KEY"],
+                is_key_content_base64: false
+              )
+
+              key_file = File.expand_path("~/AuthKey.p8")
+              File.write(key_file, ENV["APP_STORE_CONNECT_PRIVATE_KEY"])
+
+              build_app(
+                project: "ios/App/App.xcodeproj",
+                scheme: "App",
+                configuration: "Release",
+                export_method: "app-store",
+                xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{key_file} -authenticationKeyID #{ENV['APP_STORE_CONNECT_KEY_ID']} -authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_ISSUER_ID']} DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_IDENTITY='Apple Distribution'"
+              )
+
+              upload_to_testflight(
+                api_key: api_key,
+                skip_waiting_for_build_processing: true
+              )
+            end
+          end
+          EOF
+
+          fastlane release
+
   workflow_dispatch:
   push:
     branches: [ "main" ]
