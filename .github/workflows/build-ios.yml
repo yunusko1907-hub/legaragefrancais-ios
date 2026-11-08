@@ -107,15 +107,16 @@ jobs:
                 is_key_content_base64: false
               )
 
-                build_app(
+              key_file = File.expand_path("~/AuthKey.p8")
+              File.write(key_file, ENV["APP_STORE_CONNECT_PRIVATE_KEY"])
+
+              build_app(
                 project: "ios/App/App.xcodeproj",
                 scheme: "App",
                 configuration: "Release",
                 export_method: "app-store",
-                xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} -allowProvisioningUpdates"
+                xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{key_file} -authenticationKeyID #{ENV['APP_STORE_CONNECT_KEY_ID']} -authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_ISSUER_ID']} DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}"
               )
-
-
 
               upload_to_testflight(
                 api_key: api_key,
@@ -123,9 +124,6 @@ jobs:
               )
             end
           end
-          EOF
-
-          fastlane release
           EOF
 
           fastlane release
